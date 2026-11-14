@@ -20,10 +20,10 @@ export default function Layout() {
   if (!user) return <Navigate to="/login" replace />
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen overflow-x-hidden">
       <Sidebar />
       <div className="min-w-0 flex-1">
-        <div className="mx-auto max-w-7xl px-4 pb-32 sm:px-6 lg:px-8 lg:pb-10">
+        <div className="mx-auto max-w-7xl px-3 pb-32 sm:px-6 lg:px-8 lg:pb-10">
           {authService.isDemo && (
             <div className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-center text-[11px] text-amber-200/80">
               Demo mode: sample data, and files you add live in this browser tab only (not yet saved to Cloudflare R2).
