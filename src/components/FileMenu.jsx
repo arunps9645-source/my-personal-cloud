@@ -22,7 +22,7 @@ export default function FileMenu({ items, align = 'right' }) {
   }, [open])
 
   return (
-    <div ref={ref} className="relative" onClick={(e) => e.stopPropagation()}>
+    <div ref={ref} className={`relative ${open ? 'z-[70]' : 'z-0'}`} onClick={(e) => e.stopPropagation()}>
       <button
         aria-label="File actions"
         aria-haspopup="menu"
@@ -40,7 +40,7 @@ export default function FileMenu({ items, align = 'right' }) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.12 }}
-            className={`glass-strong absolute z-30 mt-1 w-48 rounded-xl p-1 shadow-2xl ${align === 'right' ? 'right-0' : 'left-0'}`}
+            className={`absolute z-[80] mt-1 w-48 rounded-xl border border-white/10 bg-ink-800/95 p-1 shadow-2xl backdrop-blur-2xl ${align === 'right' ? 'right-0' : 'left-0'}`}
           >
             {items.map((it) => (
               <button

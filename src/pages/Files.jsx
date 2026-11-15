@@ -94,7 +94,7 @@ export default function Files() {
           { label: f.favorite ? 'Unfavorite' : 'Favorite', icon: <Heart size={15} />, onClick: () => app.toggleFavorite(f.id) },
           { label: 'Rename', icon: <Pencil size={15} />, onClick: () => setModal({ kind: 'rename', target: f.id }) },
           { label: 'Move', icon: <FolderInput size={15} />, onClick: () => setModal({ kind: 'move', target: f.id }) },
-          { label: 'Move to trash', icon: <Trash2 size={15} />, danger: true, onClick: () => app.trashFile(f.id) },
+          { label: 'Delete', icon: <Trash2 size={15} />, danger: true, onClick: () => app.trashFile(f.id) },
         ]
 
   const folderMenu = (fo) => [
