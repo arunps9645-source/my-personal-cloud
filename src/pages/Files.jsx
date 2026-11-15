@@ -165,6 +165,12 @@ export default function Files() {
           {tab !== 'trash' && visibleFiles.length > 0 && (
             selecting ? (
               <>
+                <button
+                  className="btn-ghost !py-2"
+                  onClick={() => setSelectedIds((current) => current.size === visibleFiles.length ? new Set() : new Set(visibleFiles.map((file) => file.id)))}
+                >
+                  {selectedIds.size === visibleFiles.length ? 'Clear all' : 'Select all'}
+                </button>
                 <button className="btn-ghost !py-2" onClick={() => { setSelecting(false); setSelectedIds(new Set()) }}>Cancel</button>
                 <button className="btn-danger !py-2" disabled={!selectedIds.size} onClick={() => setModal({ kind: 'bulkDelete' })}>
                   <Trash2 size={15} /> Delete{selectedIds.size ? ` (${selectedIds.size})` : ''}
