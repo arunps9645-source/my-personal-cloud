@@ -5,7 +5,7 @@ import { NAV } from './Sidebar'
 export default function MobileNav() {
   return (
     <nav
-      className="glass-strong fixed inset-x-3 bottom-3 z-30 flex justify-around rounded-2xl p-1.5 lg:hidden"
+      className="glass-strong fixed inset-x-3 bottom-3 z-30 flex justify-around rounded-2xl p-1.5 shadow-2xl lg:hidden"
       style={{ paddingBottom: 'calc(0.375rem + env(safe-area-inset-bottom))' }}
       aria-label="Primary"
     >

@@ -129,53 +129,6 @@ export function AppProvider({ children }) {
     )
   }, [])
 
-  // Restore the user's cloud files after a refresh.
-  useEffect(() => {
-    if (authLoading || !user) return
-
-    let cancelled = false
-
-    const loadCloudFiles = async () => {
-      try {
-        const cloudFiles = await listCloudFiles()
-
-        if (cancelled) return
-
-        setFiles(cloudFiles.filter(Boolean).map((file) => {
-          const name = file.name || file.filename || file.key?.split('/').pop() || 'Untitled file'
-          const createdAt = file.createdAt || file.lastModified || Date.now()
-
-          return {
-            id: file.id || file.key,
-            name,
-            type: detectType(name, file.contentType || file.type),
-            size: file.size || 0,
-            folderId: null,
-            createdAt,
-            takenAt: createdAt,
-            openedAt: null,
-            favorite: false,
-            trashed: false,
-            hue: Math.floor(Math.random() * 360),
-            location: null,
-            personIds: [],
-            synced: true,
-            cloudKey: file.key,
-            url: file.url || null,
-          }
-        }))
-      } catch (error) {
-        if (!cancelled) toast(error.message || 'Could not load cloud files.', 'error')
-      }
-    }
-
-    loadCloudFiles()
-
-    return () => {
-      cancelled = true
-    }
-  }, [authLoading, user, toast])
-
   const dismissToast = useCallback((id) => {
     setToasts((items) =>
       items.filter((item) => item.id !== id),
