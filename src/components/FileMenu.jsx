@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { MoreVertical } from 'lucide-react'
@@ -5,25 +6,44 @@ import { MoreVertical } from 'lucide-react'
 /** items: [{ label, icon, onClick, danger?, disabled?, hint? }] */
 export default function FileMenu({ items, align = 'right' }) {
   const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
   const ref = useRef(null)
+  const buttonRef = useRef(null)
+  const menuRef = useRef(null)
+
+  const updatePosition = () => {
+    const rect = buttonRef.current?.getBoundingClientRect()
+    if (!rect) return
+
+    const width = 192
+    const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8)
+    setPosition({ top: rect.bottom + 4, left })
+  }
 
   useEffect(() => {
     if (!open) return undefined
+    updatePosition()
     const close = (e) => {
-      if (!ref.current?.contains(e.target)) setOpen(false)
+      if (!ref.current?.contains(e.target) && !menuRef.current?.contains(e.target)) setOpen(false)
     }
     const esc = (e) => e.key === 'Escape' && setOpen(false)
+    const reposition = () => updatePosition()
     document.addEventListener('pointerdown', close)
     document.addEventListener('keydown', esc)
+    window.addEventListener('resize', reposition)
+    window.addEventListener('scroll', reposition, true)
     return () => {
       document.removeEventListener('pointerdown', close)
       document.removeEventListener('keydown', esc)
+      window.removeEventListener('resize', reposition)
+      window.removeEventListener('scroll', reposition, true)
     }
   }, [open])
 
   return (
     <div ref={ref} className={`relative ${open ? 'z-[70]' : 'z-0'}`} onClick={(e) => e.stopPropagation()}>
       <button
+        ref={buttonRef}
         aria-label="File actions"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -32,15 +52,18 @@ export default function FileMenu({ items, align = 'right' }) {
       >
         <MoreVertical size={17} />
       </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {open && (
+            <motion.div
+            ref={menuRef}
             role="menu"
             initial={{ opacity: 0, scale: 0.95, y: -4 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.12 }}
-            className={`absolute z-[80] mt-1 w-48 rounded-xl border border-white/10 bg-ink-800/95 p-1 shadow-2xl backdrop-blur-2xl ${align === 'right' ? 'right-0' : 'left-0'}`}
+            style={{ position: 'fixed', top: position.top, left: position.left }}
+            className="z-[9999] w-48 rounded-xl border border-white/10 bg-ink-800 p-1 shadow-2xl backdrop-blur-2xl"
           >
             {items.map((it) => (
               <button
@@ -60,9 +83,11 @@ export default function FileMenu({ items, align = 'right' }) {
                 {it.label}
               </button>
             ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </div>
   )
 }
