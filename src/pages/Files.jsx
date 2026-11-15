@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  ChevronRight, Download, FolderInput, FolderPlus, Folder, Grid3X3, Heart, List, Pencil, RotateCcw, Star, Trash2, UploadCloud,
+  CheckSquare, ChevronRight, Download, FolderInput, FolderPlus, Folder, Grid3X3, Heart, List, Pencil, RotateCcw, Square, Star, Trash2, UploadCloud,
 } from 'lucide-react'
 import { useApp } from '../store/AppStore'
 import PageHeader, { EmptyState } from '../components/PageHeader'
@@ -30,6 +30,8 @@ export default function Files() {
   const [view, setView] = useState(() => localStorage.getItem('mpc.view') || 'grid')
   const [dragging, setDragging] = useState(false)
   const [modal, setModal] = useState(null) // {kind, target}
+  const [selecting, setSelecting] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
 
   const tab = params.get('tab') || 'all'
   const q = (params.get('q') || '').toLowerCase()
@@ -68,6 +70,22 @@ export default function Files() {
 
   const trashCount = files.filter((f) => f.trashed).length
   const isEmpty = visibleFiles.length === 0 && visibleFolders.length === 0
+
+  const toggleSelected = (id) => {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const deleteSelected = () => {
+    selectedIds.forEach((id) => app.trashFile(id))
+    setSelectedIds(new Set())
+    setSelecting(false)
+    setModal(null)
+  }
 
   const preview = (f) => {
     app.openFile(f.id)
@@ -144,6 +162,20 @@ export default function Files() {
           ))}
         </div>
         <div className="flex items-center gap-2">
+          {tab !== 'trash' && visibleFiles.length > 0 && (
+            selecting ? (
+              <>
+                <button className="btn-ghost !py-2" onClick={() => { setSelecting(false); setSelectedIds(new Set()) }}>Cancel</button>
+                <button className="btn-danger !py-2" disabled={!selectedIds.size} onClick={() => setModal({ kind: 'bulkDelete' })}>
+                  <Trash2 size={15} /> Delete{selectedIds.size ? ` (${selectedIds.size})` : ''}
+                </button>
+              </>
+            ) : (
+              <button className="btn-ghost !py-2" onClick={() => setSelecting(true)}>
+                <CheckSquare size={15} /> Select
+              </button>
+            )
+          )}
           {tab === 'trash' && trashCount > 0 && (
             <button className="btn-danger !py-2" onClick={() => setModal({ kind: 'emptyTrash' })}>Empty trash</button>
           )}
@@ -219,9 +251,14 @@ export default function Files() {
                 animate={{ opacity: 1, y: 0, transition: { delay: Math.min(i, 12) * 0.025 } }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 whileHover={{ y: -3 }}
-                onClick={() => !f.trashed && preview(f)}
-                className="glass glow-border group cursor-pointer rounded-2xl p-2.5"
+                onClick={() => selecting ? toggleSelected(f.id) : (!f.trashed && preview(f))}
+                className={`glass glow-border group relative cursor-pointer rounded-2xl p-2.5 ${selectedIds.has(f.id) ? 'ring-2 ring-accent-blue' : ''}`}
               >
+                {selecting && (
+                  <span className="absolute left-4 top-4 z-10 rounded-md bg-ink-950/80 p-1 text-white">
+                    {selectedIds.has(f.id) ? <CheckSquare size={18} className="text-accent-cyan" /> : <Square size={18} />}
+                  </span>
+                )}
                 <div className="relative aspect-[4/3] overflow-hidden rounded-xl">
                   {f.type === 'image' || f.type === 'video' ? (
                     <PhotoTile file={f} />
@@ -268,9 +305,10 @@ export default function Files() {
                 key={f.id}
                 layout
                 exit={{ opacity: 0 }}
-                onClick={() => !f.trashed && preview(f)}
-                className="flex cursor-pointer items-center gap-3 border-b border-white/5 px-4 py-3 last:border-0 hover:bg-white/[0.04]"
+                onClick={() => selecting ? toggleSelected(f.id) : (!f.trashed && preview(f))}
+                className={`flex cursor-pointer items-center gap-3 border-b border-white/5 px-4 py-3 last:border-0 hover:bg-white/[0.04] ${selectedIds.has(f.id) ? 'bg-accent-blue/10' : ''}`}
               >
+                {selecting && (selectedIds.has(f.id) ? <CheckSquare size={19} className="shrink-0 text-accent-cyan" /> : <Square size={19} className="shrink-0 text-slate-500" />)}
                 <FileIcon type={f.type} size={18} box="h-9 w-9" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm text-slate-100">{f.name}</p>
@@ -309,6 +347,7 @@ export default function Files() {
       <ConfirmModal open={modal?.kind === 'deleteFolder'} onClose={close} title="Delete folder?" danger confirmLabel="Delete" message="The folder and any subfolders will be removed. Files inside move to trash, where you can restore them." onConfirm={() => app.deleteFolder(modal.target)} />
       <ConfirmModal open={modal?.kind === 'purge'} onClose={close} title="Delete forever?" danger confirmLabel="Delete forever" message="This permanently removes the file and can't be undone." onConfirm={() => app.deleteForever(modal.target)} />
       <ConfirmModal open={modal?.kind === 'emptyTrash'} onClose={close} title="Empty trash?" danger confirmLabel="Empty trash" message={`This permanently removes ${trashCount} item${trashCount === 1 ? '' : 's'}.`} onConfirm={() => app.emptyTrash()} />
+      <ConfirmModal open={modal?.kind === 'bulkDelete'} onClose={close} title="Delete selected files?" danger confirmLabel="Delete selected" message={`Move ${selectedIds.size} selected file${selectedIds.size === 1 ? '' : 's'} to trash?`} onConfirm={deleteSelected} />
 
       <Modal open={modal?.kind === 'move'} onClose={close} title="Move to folder" size="sm">
         <div className="space-y-1">
