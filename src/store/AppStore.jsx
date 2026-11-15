@@ -26,6 +26,12 @@ const uid = () =>
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2)
 
+const TRASH_KEY = 'mpc.trashed-files'
+const readTrash = () => {
+  try { return new Set(JSON.parse(localStorage.getItem(TRASH_KEY) || '[]')) } catch { return new Set() }
+}
+const writeTrash = (ids) => localStorage.setItem(TRASH_KEY, JSON.stringify([...ids]))
+
 function mapCloudFile(object, url) {
   const date = object.uploaded
     ? new Date(object.uploaded).getTime()
@@ -195,7 +201,11 @@ export function AppProvider({ children }) {
         )
 
         if (!cancelled) {
-          setFiles(restored.filter(Boolean))
+          const trashed = readTrash()
+          setFiles(restored.filter(Boolean).map((file) => ({
+            ...file,
+            trashed: trashed.has(file.id) || trashed.has(file.cloudKey),
+          })))
         }
       } catch (error) {
         if (!cancelled) {
@@ -437,6 +447,10 @@ export function AppProvider({ children }) {
         log('trash', `Moved "${file.name}" to trash`)
       }
 
+      const trashed = readTrash()
+      trashed.add(file?.id || id)
+      if (file?.cloudKey) trashed.add(file.cloudKey)
+      writeTrash(trashed)
       patchFile(id, { trashed: true })
     },
     [files, patchFile, log],
@@ -450,6 +464,10 @@ export function AppProvider({ children }) {
         log('restore', `Restored "${file.name}"`)
       }
 
+      const trashed = readTrash()
+      trashed.delete(id)
+      if (file?.cloudKey) trashed.delete(file.cloudKey)
+      writeTrash(trashed)
       patchFile(id, { trashed: false })
     },
     [files, patchFile, log],
@@ -474,6 +492,11 @@ export function AppProvider({ children }) {
         setFiles((items) =>
           items.filter((item) => item.id !== id),
         )
+
+        const trashed = readTrash()
+        trashed.delete(id)
+        if (file.cloudKey) trashed.delete(file.cloudKey)
+        writeTrash(trashed)
 
         setAlbums((items) =>
           items.map((album) => {
