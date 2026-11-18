@@ -32,6 +32,7 @@ const readTrash = () => {
 }
 const writeTrash = (ids) => localStorage.setItem(TRASH_KEY, JSON.stringify([...ids]))
 
+// previewState: 'loading' | 'ready' | 'error'
 function mapCloudFile(object, url) {
   const date = object.uploaded
     ? new Date(object.uploaded).getTime()
@@ -54,6 +55,33 @@ function mapCloudFile(object, url) {
     synced: true,
     cloudKey: object.key,
     url,
+    previewState: url ? 'ready' : 'loading',
+  }
+}
+
+// Oru samayam `limit` download mathram (phone-il memory/network nannaayirikkan)
+async function runQueue(items, limit, worker, isCancelled) {
+  let next = 0
+  const runners = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (!isCancelled()) {
+        const index = next++
+        if (index >= items.length) return
+        await worker(items[index])
+      }
+    },
+  )
+  await Promise.all(runners)
+}
+
+// Download fail aayal oru thavana koodi try cheyyum
+async function downloadWithRetry(key) {
+  try {
+    return await downloadFromCloud(key)
+  } catch {
+    await new Promise((resolve) => setTimeout(resolve, 700))
+    return downloadFromCloud(key)
   }
 }
 
@@ -121,47 +149,32 @@ export function AppProvider({ children }) {
   const toast = useCallback((message, tone = 'info') => {
     const id = uid()
 
-    setToasts((items) => [
-      ...items,
-      { id, message, tone },
-    ])
+    setToasts((items) => [...items, { id, message, tone }])
 
     window.setTimeout(
-      () =>
-        setToasts((items) =>
-          items.filter((item) => item.id !== id),
-        ),
+      () => setToasts((items) => items.filter((item) => item.id !== id)),
       4200,
     )
   }, [])
 
   const dismissToast = useCallback((id) => {
-    setToasts((items) =>
-      items.filter((item) => item.id !== id),
-    )
+    setToasts((items) => items.filter((item) => item.id !== id))
   }, [])
 
   // Activity log
   const log = useCallback((icon, text) => {
     setActivity((items) =>
-      [
-        { id: uid(), icon, text, at: Date.now() },
-        ...items,
-      ].slice(0, 30),
+      [{ id: uid(), icon, text, at: Date.now() }, ...items].slice(0, 30),
     )
   }, [])
 
   const patchFile = useCallback((id, patch) => {
     setFiles((items) =>
-      items.map((file) =>
-        file.id === id
-          ? { ...file, ...patch }
-          : file,
-      ),
+      items.map((file) => (file.id === id ? { ...file, ...patch } : file)),
     )
   }, [])
 
-  // Restore cloud files from R2 after login or page refresh
+  // Cloud files restore: list pettennu kaanikkum, preview background-il load aakum
   useEffect(() => {
     let cancelled = false
     const createdUrls = []
@@ -177,45 +190,63 @@ export function AppProvider({ children }) {
 
       try {
         const objects = await listCloudFiles()
+        if (cancelled) return
 
-        const restored = await Promise.all(
-          objects.map(async (object) => {
+        const trashed = readTrash()
+        const base = objects.map((object) => {
+          const file = mapCloudFile(object, null)
+          return {
+            ...file,
+            trashed: trashed.has(file.id) || trashed.has(file.cloudKey),
+          }
+        })
+
+        // 1) List udane kaanikkuka (blank screen illa)
+        setFiles(base)
+        setCloudLoading(false)
+
+        // 2) Images aadyam, pinne baaki files
+        const ordered = [...base].sort(
+          (a, b) => (a.type === 'image' ? 0 : 1) - (b.type === 'image' ? 0 : 1),
+        )
+
+        await runQueue(
+          ordered,
+          4,
+          async (file) => {
             try {
-              const blob = await downloadFromCloud(object.key)
-
-              if (cancelled) return null
+              const blob = await downloadWithRetry(file.cloudKey)
+              if (cancelled) return
 
               const previewUrl = URL.createObjectURL(blob)
               createdUrls.push(previewUrl)
 
-              return mapCloudFile(object, previewUrl)
-            } catch (error) {
-              console.error(
-                `Could not download ${object.name}:`,
-                error,
+              setFiles((items) =>
+                items.map((item) =>
+                  item.id === file.id
+                    ? { ...item, url: previewUrl, previewState: 'ready' }
+                    : item,
+                ),
               )
+            } catch (error) {
+              console.error(`Could not download ${file.name}:`, error)
+              if (cancelled) return
 
-              return mapCloudFile(object, null)
+              setFiles((items) =>
+                items.map((item) =>
+                  item.id === file.id
+                    ? { ...item, previewState: 'error' }
+                    : item,
+                ),
+              )
             }
-          }),
+          },
+          () => cancelled,
         )
-
-        if (!cancelled) {
-          const trashed = readTrash()
-          setFiles(restored.filter(Boolean).map((file) => ({
-            ...file,
-            trashed: trashed.has(file.id) || trashed.has(file.cloudKey),
-          })))
-        }
       } catch (error) {
         if (!cancelled) {
           console.error('R2 file listing failed:', error)
-
-          toast(
-            error.message || 'Could not load cloud files',
-            'error',
-          )
-
+          toast(error.message || 'Could not load cloud files', 'error')
           setFiles([])
         }
       } finally {
@@ -229,12 +260,28 @@ export function AppProvider({ children }) {
 
     return () => {
       cancelled = true
-
-      createdUrls.forEach((url) => {
-        URL.revokeObjectURL(url)
-      })
+      createdUrls.forEach((url) => URL.revokeObjectURL(url))
     }
   }, [user?.id, toast])
+
+  // Preview fail aaya file veendum load cheyyan
+  const retryPreview = useCallback(async (id) => {
+    const file = files.find((item) => item.id === id)
+    if (!file?.cloudKey) return
+
+    patchFile(id, { previewState: 'loading' })
+
+    try {
+      const blob = await downloadWithRetry(file.cloudKey)
+      patchFile(id, {
+        url: URL.createObjectURL(blob),
+        previewState: 'ready',
+      })
+    } catch (error) {
+      console.error(`Retry failed for ${file.name}:`, error)
+      patchFile(id, { previewState: 'error' })
+    }
+  }, [files, patchFile])
 
   // Authentication functions
   const signIn = useCallback(async (credentials) => {
@@ -300,120 +347,107 @@ export function AppProvider({ children }) {
   // Upload files to Cloudflare R2
   const upload = useCallback(
     async (fileList, folderId = null) => {
-      await Promise.all(Array.from(fileList || []).map(async (file) => {
-        const uploadId = uid()
-        const problem = validateFile(file)
+      await Promise.all(
+        Array.from(fileList || []).map(async (file) => {
+          const uploadId = uid()
+          const problem = validateFile(file)
 
-        if (problem) {
+          if (problem) {
+            setUploads((items) => [
+              ...items,
+              {
+                id: uploadId,
+                name: file.name,
+                progress: 0,
+                status: 'error',
+                error: problem,
+              },
+            ])
+
+            return
+          }
+
           setUploads((items) => [
             ...items,
             {
               id: uploadId,
               name: file.name,
               progress: 0,
-              status: 'error',
-              error: problem,
+              status: 'uploading',
             },
           ])
 
-          return
-        }
+          try {
+            setUploads((items) =>
+              items.map((item) =>
+                item.id === uploadId ? { ...item, progress: 10 } : item,
+              ),
+            )
 
-        setUploads((items) => [
-          ...items,
-          {
-            id: uploadId,
-            name: file.name,
-            progress: 0,
-            status: 'uploading',
-          },
-        ])
+            const result = await uploadToCloud(file)
 
-        try {
-          setUploads((items) =>
-            items.map((item) =>
-              item.id === uploadId
-                ? { ...item, progress: 10 }
-                : item,
-            ),
-          )
+            if (!result?.success || !result?.key) {
+              throw new Error('Cloud upload failed')
+            }
 
-          const result = await uploadToCloud(file)
+            const now = Date.now()
+            const previewUrl = URL.createObjectURL(file)
 
-          if (!result?.success || !result?.key) {
-            throw new Error('Cloud upload failed')
+            setFiles((items) => [
+              {
+                id: result.key,
+                name: file.name,
+                type: detectType(file.name, file.type),
+                size: file.size,
+                folderId,
+                createdAt: now,
+                takenAt: file.lastModified || now,
+                openedAt: null,
+                favorite: false,
+                trashed: false,
+                hue: Math.floor(Math.random() * 360),
+                location: null,
+                personIds: [],
+                synced: true,
+                cloudKey: result.key,
+                url: previewUrl,
+                previewState: 'ready',
+              },
+              ...items.filter((item) => item.cloudKey !== result.key),
+            ])
+
+            setUploads((items) =>
+              items.map((item) =>
+                item.id === uploadId
+                  ? { ...item, progress: 100, status: 'done' }
+                  : item,
+              ),
+            )
+
+            log('upload', `Uploaded "${file.name}" to cloud storage`)
+          } catch (error) {
+            setUploads((items) =>
+              items.map((item) =>
+                item.id === uploadId
+                  ? {
+                      ...item,
+                      status: 'error',
+                      error: error.message || 'Upload failed',
+                    }
+                  : item,
+              ),
+            )
+
+            toast(error.message || `Could not upload ${file.name}`, 'error')
           }
-
-          const now = Date.now()
-          const previewUrl = URL.createObjectURL(file)
-
-          setFiles((items) => [
-            {
-              id: result.key,
-              name: file.name,
-              type: detectType(file.name, file.type),
-              size: file.size,
-              folderId,
-              createdAt: now,
-              takenAt: file.lastModified || now,
-              openedAt: null,
-              favorite: false,
-              trashed: false,
-              hue: Math.floor(Math.random() * 360),
-              location: null,
-              personIds: [],
-              synced: true,
-              cloudKey: result.key,
-              url: previewUrl,
-            },
-            ...items.filter(
-              (item) => item.cloudKey !== result.key,
-            ),
-          ])
-
-          setUploads((items) =>
-            items.map((item) =>
-              item.id === uploadId
-                ? {
-                    ...item,
-                    progress: 100,
-                    status: 'done',
-                  }
-                : item,
-            ),
-          )
-
-          log(
-            'upload',
-            `Uploaded "${file.name}" to cloud storage`,
-          )
-        } catch (error) {
-          setUploads((items) =>
-            items.map((item) =>
-              item.id === uploadId
-                ? {
-                    ...item,
-                    status: 'error',
-                    error: error.message || 'Upload failed',
-                  }
-                : item,
-            ),
-          )
-
-          toast(
-            error.message || `Could not upload ${file.name}`,
-            'error',
-          )
-        }
-      }))
+        }),
+      )
     },
     [log, toast],
   )
 
   const clearUploads = useCallback(() => {
-    setUploads((items) =>
-      items.filter((item) => item.status === 'uploading'),
-    )
+    setUploads((items) => items.filter((item) => item.status === 'uploading'))
   }, [])
 
   // File operations
@@ -432,9 +466,7 @@ export function AppProvider({ children }) {
   const toggleFavorite = useCallback((id) => {
     setFiles((items) =>
       items.map((file) =>
-        file.id === id
-          ? { ...file, favorite: !file.favorite }
-          : file,
+        file.id === id ? { ...file, favorite: !file.favorite } : file,
       ),
     )
   }, [])
@@ -489,9 +521,7 @@ export function AppProvider({ children }) {
           URL.revokeObjectURL(file.url)
         }
 
-        setFiles((items) =>
-          items.filter((item) => item.id !== id),
-        )
+        setFiles((items) => items.filter((item) => item.id !== id))
 
         const trashed = readTrash()
         trashed.delete(id)
@@ -500,9 +530,7 @@ export function AppProvider({ children }) {
 
         setAlbums((items) =>
           items.map((album) => {
-            const photoIds = album.photoIds.filter(
-              (photoId) => photoId !== id,
-            )
+            const photoIds = album.photoIds.filter((photoId) => photoId !== id)
 
             return {
               ...album,
@@ -514,15 +542,9 @@ export function AppProvider({ children }) {
           }),
         )
 
-        log(
-          'trash',
-          `Permanently deleted "${file.name}"`,
-        )
+        log('trash', `Permanently deleted "${file.name}"`)
       } catch (error) {
-        toast(
-          error.message || 'Could not delete cloud file',
-          'error',
-        )
+        toast(error.message || 'Could not delete cloud file', 'error')
       }
     },
     [files, log, toast],
@@ -541,14 +563,9 @@ export function AppProvider({ children }) {
           URL.revokeObjectURL(file.url)
         }
 
-        setFiles((items) =>
-          items.filter((item) => item.id !== file.id),
-        )
+        setFiles((items) => items.filter((item) => item.id !== file.id))
       } catch (error) {
-        toast(
-          `Could not delete ${file.name}: ${error.message}`,
-          'error',
-        )
+        toast(`Could not delete ${file.name}: ${error.message}`, 'error')
       }
     }
   }, [files, toast])
@@ -577,12 +594,7 @@ export function AppProvider({ children }) {
 
       setFolders((items) => [
         ...items,
-        {
-          id: uid(),
-          name: clean,
-          parentId,
-          createdAt: Date.now(),
-        },
+        { id: uid(), name: clean, parentId, createdAt: Date.now() },
       ])
 
       log('folder', `Created folder "${clean}"`)
@@ -597,9 +609,7 @@ export function AppProvider({ children }) {
 
     setFolders((items) =>
       items.map((folder) =>
-        folder.id === id
-          ? { ...folder, name: clean }
-          : folder,
+        folder.id === id ? { ...folder, name: clean } : folder,
       ),
     )
   }, [])
@@ -627,23 +637,14 @@ export function AppProvider({ children }) {
       setFiles((items) =>
         items.map((file) =>
           doomed.has(file.folderId)
-            ? {
-                ...file,
-                trashed: true,
-                folderId: null,
-              }
+            ? { ...file, trashed: true, folderId: null }
             : file,
         ),
       )
 
-      setFolders((items) =>
-        items.filter((folder) => !doomed.has(folder.id)),
-      )
+      setFolders((items) => items.filter((folder) => !doomed.has(folder.id)))
 
-      log(
-        'trash',
-        'Deleted a folder (its files are in trash)',
-      )
+      log('trash', 'Deleted a folder (its files are in trash)')
     },
     [folders, log],
   )
@@ -678,9 +679,7 @@ export function AppProvider({ children }) {
     if (clean) {
       setAlbums((items) =>
         items.map((album) =>
-          album.id === id
-            ? { ...album, name: clean }
-            : album,
+          album.id === id ? { ...album, name: clean } : album,
         ),
       )
     }
@@ -688,14 +687,9 @@ export function AppProvider({ children }) {
 
   const deleteAlbum = useCallback(
     (id) => {
-      setAlbums((items) =>
-        items.filter((album) => album.id !== id),
-      )
+      setAlbums((items) => items.filter((album) => album.id !== id))
 
-      log(
-        'trash',
-        'Deleted an album (photos are kept)',
-      )
+      log('trash', 'Deleted an album (photos are kept)')
     },
     [log],
   )
@@ -706,9 +700,7 @@ export function AppProvider({ children }) {
         items.map((album) => {
           if (album.id !== id) return album
 
-          const merged = [
-            ...new Set([...album.photoIds, ...photoIds]),
-          ]
+          const merged = [...new Set([...album.photoIds, ...photoIds])]
 
           return {
             ...album,
@@ -726,76 +718,57 @@ export function AppProvider({ children }) {
     [log],
   )
 
-  const removeFromAlbum = useCallback(
-    (id, photoId) => {
-      setAlbums((items) =>
-        items.map((album) => {
-          if (album.id !== id) return album
+  const removeFromAlbum = useCallback((id, photoId) => {
+    setAlbums((items) =>
+      items.map((album) => {
+        if (album.id !== id) return album
 
-          const photoIds = album.photoIds.filter(
-            (photo) => photo !== photoId,
-          )
+        const photoIds = album.photoIds.filter((photo) => photo !== photoId)
+
+        return {
+          ...album,
+          photoIds,
+          coverId:
+            album.coverId === photoId ? photoIds[0] ?? null : album.coverId,
+        }
+      }),
+    )
+  }, [])
+
+  const setAlbumCover = useCallback((id, photoId) => {
+    setAlbums((items) =>
+      items.map((album) =>
+        album.id === id ? { ...album, coverId: photoId } : album,
+      ),
+    )
+  }, [])
+
+  const moveBetweenAlbums = useCallback((photoId, fromId, toId) => {
+    setAlbums((items) =>
+      items.map((album) => {
+        if (album.id === fromId) {
+          const photoIds = album.photoIds.filter((id) => id !== photoId)
 
           return {
             ...album,
             photoIds,
             coverId:
-              album.coverId === photoId
-                ? photoIds[0] ?? null
-                : album.coverId,
+              album.coverId === photoId ? photoIds[0] ?? null : album.coverId,
           }
-        }),
-      )
-    },
-    [],
-  )
+        }
 
-  const setAlbumCover = useCallback((id, photoId) => {
-    setAlbums((items) =>
-      items.map((album) =>
-        album.id === id
-          ? { ...album, coverId: photoId }
-          : album,
-      ),
+        if (album.id === toId && !album.photoIds.includes(photoId)) {
+          return {
+            ...album,
+            photoIds: [...album.photoIds, photoId],
+            coverId: album.coverId ?? photoId,
+          }
+        }
+
+        return album
+      }),
     )
   }, [])
-
-  const moveBetweenAlbums = useCallback(
-    (photoId, fromId, toId) => {
-      setAlbums((items) =>
-        items.map((album) => {
-          if (album.id === fromId) {
-            const photoIds = album.photoIds.filter(
-              (id) => id !== photoId,
-            )
-
-            return {
-              ...album,
-              photoIds,
-              coverId:
-                album.coverId === photoId
-                  ? photoIds[0] ?? null
-                  : album.coverId,
-            }
-          }
-
-          if (
-            album.id === toId &&
-            !album.photoIds.includes(photoId)
-          ) {
-            return {
-              ...album,
-              photoIds: [...album.photoIds, photoId],
-              coverId: album.coverId ?? photoId,
-            }
-          }
-
-          return album
-        }),
-      )
-    },
-    [],
-  )
 
   // People / face groups
   const setFaceRecognition = useCallback(
@@ -803,19 +776,11 @@ export function AppProvider({ children }) {
       setFaceEnabled(on)
 
       if (!on) {
-        setFiles((items) =>
-          items.map((file) => ({
-            ...file,
-            personIds: [],
-          })),
-        )
+        setFiles((items) => items.map((file) => ({ ...file, personIds: [] })))
 
         setPeople([])
 
-        log(
-          'privacy',
-          'Face recognition turned off and face data deleted',
-        )
+        log('privacy', 'Face recognition turned off and face data deleted')
       } else {
         log('privacy', 'Face recognition turned on')
       }
@@ -826,9 +791,7 @@ export function AppProvider({ children }) {
   const renamePerson = useCallback((id, name) => {
     setPeople((items) =>
       items.map((person) =>
-        person.id === id
-          ? { ...person, name: name.trim() || null }
-          : person,
+        person.id === id ? { ...person, name: name.trim() || null } : person,
       ),
     )
   }, [])
@@ -843,9 +806,7 @@ export function AppProvider({ children }) {
               ...file,
               personIds: [
                 ...new Set(
-                  file.personIds.map((id) =>
-                    id === mergeId ? keepId : id,
-                  ),
+                  file.personIds.map((id) => (id === mergeId ? keepId : id)),
                 ),
               ],
             }
@@ -853,45 +814,31 @@ export function AppProvider({ children }) {
       ),
     )
 
-    setPeople((items) =>
-      items.filter((person) => person.id !== mergeId),
+    setPeople((items) => items.filter((person) => person.id !== mergeId))
+  }, [])
+
+  const removeFromPerson = useCallback((personId, photoId) => {
+    setFiles((items) =>
+      items.map((file) =>
+        file.id === photoId
+          ? {
+              ...file,
+              personIds: file.personIds.filter((id) => id !== personId),
+            }
+          : file,
+      ),
     )
   }, [])
 
-  const removeFromPerson = useCallback(
-    (personId, photoId) => {
-      setFiles((items) =>
-        items.map((file) =>
-          file.id === photoId
-            ? {
-                ...file,
-                personIds: file.personIds.filter(
-                  (id) => id !== personId,
-                ),
-              }
-            : file,
-        ),
-      )
-    },
-    [],
-  )
-
-  const assignToPerson = useCallback(
-    (personId, photoId) => {
-      setFiles((items) =>
-        items.map((file) =>
-          file.id === photoId &&
-          !file.personIds.includes(personId)
-            ? {
-                ...file,
-                personIds: [...file.personIds, personId],
-              }
-            : file,
-        ),
-      )
-    },
-    [],
-  )
+  const assignToPerson = useCallback((personId, photoId) => {
+    setFiles((items) =>
+      items.map((file) =>
+        file.id === photoId && !file.personIds.includes(personId)
+          ? { ...file, personIds: [...file.personIds, personId] }
+          : file,
+      ),
+    )
+  }, [])
 
   // Account data
   const deleteAccountData = useCallback(async () => {
@@ -924,16 +871,9 @@ export function AppProvider({ children }) {
       live,
       totalFiles: live.length,
       totalFolders: folders.length,
-      usedBytes: files.reduce(
-        (sum, file) => sum + file.size,
-        0,
-      ),
-      images: live.filter(
-        (file) => file.type === 'image',
-      ),
-      videos: live.filter(
-        (file) => file.type === 'video',
-      ),
+      usedBytes: files.reduce((sum, file) => sum + file.size, 0),
+      images: live.filter((file) => file.type === 'image'),
+      videos: live.filter((file) => file.type === 'video'),
     }
   }, [files, folders])
 
@@ -969,6 +909,7 @@ export function AppProvider({ children }) {
     emptyTrash,
     moveFile,
     openFile,
+    retryPreview,
 
     createFolder,
     renameFolder,
@@ -994,9 +935,5 @@ export function AppProvider({ children }) {
     dismissToast,
   }
 
-  return (
-    <AppCtx.Provider value={value}>
-      {children}
-    </AppCtx.Provider>
-  )
+  return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }
