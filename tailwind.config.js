@@ -4,23 +4,43 @@ export default {
   theme: {
     extend: {
       colors: {
-        // pure black -> soft black scale
+        // Cream surfaces (pazhaya "ink" dark scale ippo cream aanu)
         ink: {
-          950: '#000000',
-          900: '#0a0a0a',
-          800: '#111111',
-          700: '#1a1a1a',
-          600: '#262626',
+          950: '#f6f0e6', // page background
+          900: '#fbf7f0', // light surface
+          800: '#ffffff', // cards
+          700: '#efe7d9',
+          600: '#e4d9c7',
         },
-        // names kept so old classes still work, now monochrome
-        accent: { blue: '#ffffff', violet: '#d4d4d4', cyan: '#a3a3a3' },
+        // Main text colour (warm black)
+        fg: '#1a1410',
+        // Pazhaya component-ukal "text-white", "bg-white/5", "border-white/10"
+        // upayogikkunnundenkil ath ippo warm black aayi varum (light theme-il shariyaakum)
+        white: '#1a1410',
+        // Orange / amber accent (pazhaya blue/violet/cyan names kept)
+        accent: { blue: '#f97316', violet: '#f59e0b', cyan: '#ea580c' },
+        // Slate scale light theme-inu vendi thirichittu (text-slate-200 = dark text)
+        slate: {
+          50: '#1a1410',
+          100: '#1f1812',
+          200: '#2b221a',
+          300: '#3e3328',
+          400: '#5e5143',
+          500: '#80705f',
+          600: '#a39482',
+          700: '#c9bcaa',
+          800: '#e2d8c7',
+          900: '#eee6d8',
+          950: '#f6f0e6',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         display: ['"Space Grotesk"', 'Inter', 'ui-sans-serif', 'sans-serif'],
       },
       boxShadow: {
-        glow: '0 0 0 1px rgba(255,255,255,.18), 0 8px 40px -8px rgba(255,255,255,.25)',
+        glow: '0 0 0 1px rgba(249,115,22,.25), 0 8px 30px -8px rgba(249,115,22,.45)',
+        card: '0 1px 2px rgba(26,20,16,.05), 0 8px 30px -12px rgba(26,20,16,.12)',
       },
       keyframes: {
         fadeUp: {
@@ -44,8 +64,8 @@ export default {
           '100%': { backgroundPosition: '48px 48px' },
         },
         pulseRing: {
-          '0%': { boxShadow: '0 0 0 0 rgba(255,255,255,.35)' },
-          '100%': { boxShadow: '0 0 0 18px rgba(255,255,255,0)' },
+          '0%': { boxShadow: '0 0 0 0 rgba(249,115,22,.4)' },
+          '100%': { boxShadow: '0 0 0 18px rgba(249,115,22,0)' },
         },
         marquee: {
           '0%': { transform: 'translateX(0)' },

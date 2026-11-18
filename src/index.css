@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html,
@@ -13,11 +13,10 @@ body,
 }
 
 body {
-  @apply bg-ink-950 font-sans text-neutral-200 antialiased;
+  @apply bg-ink-950 font-sans text-fg antialiased;
   background-image:
-    radial-gradient(900px 500px at 12% -10%, rgba(255, 255, 255, 0.09), transparent 60%),
-    radial-gradient(800px 500px at 100% 0%, rgba(255, 255, 255, 0.05), transparent 60%);
-  background-attachment: fixed;
+    radial-gradient(900px 500px at 10% -10%, rgba(249, 115, 22, 0.14), transparent 60%),
+    radial-gradient(800px 500px at 100% 0%, rgba(245, 158, 11, 0.12), transparent 60%);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -29,8 +28,8 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    linear-gradient(rgba(26, 20, 16, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 20, 16, 0.05) 1px, transparent 1px);
   background-size: 48px 48px;
   mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
   -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
@@ -46,27 +45,30 @@ textarea {
 }
 
 ::selection {
-  background: #ffffff;
-  color: #000000;
+  background: #f97316;
+  color: #1a1410;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #333 transparent;
+  scrollbar-color: #cbbfae transparent;
 }
 
 @layer components {
   .glass {
-    @apply border border-white/10 bg-white/[0.04] backdrop-blur-xl transition duration-300;
+    @apply rounded-2xl border border-fg/10 shadow-card backdrop-blur-xl transition duration-300;
+    background: rgba(255, 255, 255, 0.65);
   }
   .glass:hover {
-    @apply border-white/25 bg-white/[0.07];
+    border-color: rgba(249, 115, 22, 0.4);
+    background: rgba(255, 255, 255, 0.85);
   }
   .glass-strong {
-    @apply border border-white/10 bg-ink-800/80 backdrop-blur-2xl;
+    @apply border border-fg/10 shadow-card backdrop-blur-2xl;
+    background: rgba(255, 255, 255, 0.9);
   }
 
-  /* animated white border */
+  /* animated orange border */
   .glow-border {
     position: relative;
   }
@@ -78,16 +80,16 @@ textarea {
     padding: 1px;
     background: linear-gradient(
       110deg,
-      rgba(255, 255, 255, 0.1) 20%,
-      rgba(255, 255, 255, 0.9) 50%,
-      rgba(255, 255, 255, 0.1) 80%
+      rgba(26, 20, 16, 0.08) 20%,
+      rgba(249, 115, 22, 0.95) 50%,
+      rgba(26, 20, 16, 0.08) 80%
     );
     background-size: 200% 100%;
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
     pointer-events: none;
-    opacity: 0.5;
+    opacity: 0.55;
     transition: opacity 0.25s;
     animation: shimmer 4s linear infinite;
   }
@@ -95,19 +97,19 @@ textarea {
     opacity: 1;
   }
 
-  /* white -> grey -> white moving text */
+  /* black -> orange -> black moving text */
   .gradient-text {
     @apply bg-clip-text text-transparent animate-shimmer;
-    background-image: linear-gradient(90deg, #ffffff, #737373, #ffffff, #737373, #ffffff);
+    background-image: linear-gradient(90deg, #1a1410, #ea580c, #f59e0b, #ea580c, #1a1410);
     background-size: 200% auto;
   }
 
   .btn {
     @apply relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-xl px-4 py-2.5 text-sm font-medium transition duration-300
-      focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 disabled:cursor-not-allowed disabled:opacity-50;
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/70 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-white text-black shadow-glow hover:-translate-y-0.5 hover:bg-neutral-200 active:translate-y-0 active:scale-[0.98];
+    @apply btn bg-accent-blue text-fg shadow-glow hover:-translate-y-0.5 hover:brightness-105 active:translate-y-0 active:scale-[0.98];
   }
   /* shine sweep on hover */
   .btn-primary::after {
@@ -117,7 +119,7 @@ textarea {
     left: -120%;
     width: 60%;
     height: 100%;
-    background: linear-gradient(120deg, transparent, rgba(0, 0, 0, 0.18), transparent);
+    background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.45), transparent);
     transform: skewX(-20deg);
     transition: left 0.6s ease;
   }
@@ -125,18 +127,22 @@ textarea {
     left: 130%;
   }
   .btn-ghost {
-    @apply btn border border-white/15 bg-transparent text-white hover:-translate-y-0.5 hover:bg-white hover:text-black active:scale-[0.98];
+    @apply btn border border-fg/20 bg-transparent text-fg hover:-translate-y-0.5 hover:bg-fg active:scale-[0.98];
+  }
+  .btn-ghost:hover {
+    color: #f6f0e6;
   }
   .btn-danger {
-    @apply btn border border-white/20 bg-transparent text-neutral-300 hover:border-white hover:bg-white/10 hover:text-white;
+    @apply btn border border-rose-600/30 bg-transparent text-rose-700 hover:bg-rose-500/10;
   }
 
   .input {
-    @apply w-full rounded-xl border border-white/10 bg-ink-900/70 px-3.5 py-2.5 text-sm text-white placeholder:text-neutral-500
-      outline-none transition duration-300 focus:border-white/70 focus:ring-2 focus:ring-white/15;
+    @apply w-full rounded-xl border border-fg/15 px-3.5 py-2.5 text-sm text-fg placeholder:text-fg/40
+      outline-none transition duration-300 focus:border-accent-blue focus:ring-2 focus:ring-accent-blue/25;
+    background: rgba(255, 255, 255, 0.8);
   }
   .label {
-    @apply mb-1.5 block text-xs font-medium uppercase tracking-wider text-neutral-400;
+    @apply mb-1.5 block text-xs font-medium uppercase tracking-wider text-fg/60;
   }
 
   /* helper animation classes */
@@ -147,6 +153,17 @@ textarea {
   .reveal-delay-2 { animation-delay: 0.2s; }
   .reveal-delay-3 { animation-delay: 0.3s; }
   .reveal-delay-4 { animation-delay: 0.4s; }
+}
+
+/* phone-il lag kurakkan */
+@media (max-width: 768px) {
+  body::before {
+    animation: none;
+  }
+  .glass,
+  .glass-strong {
+    @apply backdrop-blur-md;
+  }
 }
 
 /* accessibility: animation vendaathavarkku */
